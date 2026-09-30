@@ -1,0 +1,76 @@
+/* 辩论直播页：在 demo.css 的舞台样式基础上补充的部分 */
+
+.challenge-count { font-size: 12px; color: var(--muted); }
+.challenge-count .pro { color: var(--pro); }
+.challenge-count .con { color: var(--con); }
+.error-text { color: var(--danger); font-weight: 600; }
+.hint { font-size: 13px; color: var(--muted); margin: 4px 0 10px; }
+
+/* 赛前准备 */
+.research-card .section-title { margin: 0; }
+.rc-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 860px) { .rc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rc-cell { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border-top: 3px solid var(--border); }
+.rc-cell.pro { border-top-color: var(--pro); }
+.rc-cell.con { border-top-color: var(--con); }
+.rc-name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.rc-name .avatar { width: 24px; height: 24px; font-size: 10px; }
+.rc-stat { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.rc-stat .icon { width: 11px; height: 11px; }
+
+/* 发言：立论分段、逐段出现 */
+.turn .part + .part { margin-top: 10px; }
+.turn .part-label { margin-bottom: 2px; }
+.turn .part-label .id-chip { margin-right: 4px; }
+.reveal .turn-body p { animation: rise 0.5s both; animation-delay: calc(var(--i, 0) * 120ms); }
+.challenge-slot:empty { display: none; }
+.challenge-badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
+
+/* 引用来源的核对状态 */
+.src-item .checked { font-size: 11px; color: var(--ok); white-space: nowrap; }
+.src-item .struck-tag { display: none; font-size: 11px; color: var(--danger); }
+.src-item.struck > b, .src-item.struck .src-meta { text-decoration: line-through; opacity: 0.7; }
+.src-item.struck .struck-tag { display: inline; }
+.ref.struck { text-decoration: line-through; opacity: 0.7; }
+.src-item.flash { animation: flash 1.4s ease; border-radius: 6px; }
+
+/* 证据核查 */
+.check-card { max-width: min(760px, 92%); border: 1px solid var(--border); border-top: 3px solid var(--warn); }
+.check-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.check-head .icon { width: 16px; height: 16px; color: var(--warn); }
+.check-card p { margin: 4px 0; font-size: 14px; }
+.check-claim, .check-facts { color: var(--muted); }
+.verdict-tag { margin-left: auto; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--surface-2); }
+.verdict-tag.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.verdict-tag.partial { background: var(--warn-soft); color: var(--warn); }
+.verdict-tag.bad { background: var(--danger-soft); color: var(--danger); }
+
+/* 赛后资料 */
+.tree .file-row.undisclosed { opacity: 0.6; }
+.tree .file-row.struck .name { text-decoration: line-through; }
+.chip.bad { background: var(--danger-soft); color: var(--danger); }
+.preview .quote {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 6px 6px 0;
+  font-size: 14px;
+}
+.preview .src-line { font-size: 13px; color: var(--muted); margin: 4px 0; word-break: break-all; }
+.preview .src-list li { margin-bottom: 6px; }
+.plan { padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.plan h4 { margin: 0 0 6px; }
+.plan p { margin: 4px 0; }
+.plan ul { padding-left: 1.2em; margin: 6px 0; }
+.plan li { margin-bottom: 8px; }
+.chain { margin: 4px 0; padding-left: 1.4em; color: var(--text); }
+.chain li { margin-bottom: 2px; }
+.resume-btn { width: auto; margin-top: 12px; padding: 8px 18px; }
+.resume-hint { margin: 8px 0 0; }
+
+/* 双方模型 */
+.team-model { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.team-model:empty { display: none; }
+.team-model .icon { width: 13px; height: 13px; }
+.team-model span:first-of-type { color: var(--text); font-weight: 600; }

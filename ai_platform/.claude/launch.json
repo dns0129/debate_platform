@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "debate-demo",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=3100",
+        "DEBATE_MOCK=1",
+        "npx",
+        "tsx",
+        "src/server.ts"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "debate-live",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=3101",
+        "DEBATE_MOCK=0",
+        "npx",
+        "tsx",
+        "src/server.ts"
+      ],
+      "port": 3101
+    },
+    {
+      "name": "pf-debate-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "3200",
+        "--directory",
+        "/Users/yuanzichen/ai辩论模拟平台/skills-dev"
+      ],
+      "port": 3200
+    }
+  ]
+}

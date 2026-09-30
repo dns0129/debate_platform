@@ -1,0 +1,17 @@
+{
+  "eval_id": 2,
+  "eval_name": "un-veto-en",
+  "prompt": "Run a full public forum round on: Resolved: The United Nations should abolish the permanent members' veto power in the Security Council. I want to see the whole thing, crossfires included, and who the judges pick.",
+  "assertions": [
+    "The round contains all 11 Public Forum segments in the correct order: 2 constructives, crossfire, 2 rebuttals, crossfire, 2 summaries, grand crossfire, 2 final focuses",
+    "Every crossfire (including grand crossfire) is written as alternating short question/answer turns between the correct speakers, not summarized as prose",
+    "Specific facts and statistics in speeches are tied to named sources with URLs, rather than stated without attribution",
+    "Spot-check: at least 80% of the cited quotes that were checked (up to 8) appear verbatim, ignoring spacing and punctuation, on their live source URL",
+    "Every speech fits its PF time limit at a normal speaking rate (240 zi/min Chinese, 160 words/min English): constructive and rebuttal at most ~4:20, summary at most ~3:15, final focus at most ~2:10, and none shorter than 60% of its limit",
+    "Neither final focus introduces evidence or arguments that were not already in the round",
+    "The second rebuttal answers (frontlines) specific attacks the first rebuttal made on its own case",
+    "At least 3 judges each give a decision, a written reason for decision, and speaker points on a 25-30 scale, and the result states the vote count, the winner and a top speaker",
+    "One HTML page presents the full transcript, the decision and the sources, and renders without being broken",
+    "The debate is in English, matching the user's message"
+  ]
+}

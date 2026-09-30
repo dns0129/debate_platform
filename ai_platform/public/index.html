@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 辩论模拟平台</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#/">AI 辩论模拟平台</a>
+      <span id="mode-badge" class="badge"></span>
+      <a class="toplink" href="demo.html">辩论动态演示 →</a>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <form id="debate-form" class="card">
+          <h2>发起一场辩论</h2>
+          <label>
+            论题
+            <input name="topic" required maxlength="500" placeholder="例如：人工智能的发展利大于弊" />
+          </label>
+          <label>
+            <span class="side-tag pro">正方</span> 观点
+            <textarea name="proStance" required maxlength="500" rows="3" placeholder="例如：人工智能的发展利大于弊"></textarea>
+          </label>
+          <label>
+            <span class="side-tag con">反方</span> 观点
+            <textarea name="conStance" required maxlength="500" rows="3" placeholder="例如：人工智能的发展弊大于利"></textarea>
+          </label>
+          <fieldset class="team-models">
+            <legend>双方模型 <span class="legend-note">同队四位辩手使用同一个模型</span></legend>
+            <div class="team-pick">
+              <span class="side-tag pro">正方</span>
+              <select name="proModel" aria-label="正方模型"></select>
+              <select name="proEffort" aria-label="正方思考强度" title="思考强度：用于构思与发言"></select>
+            </div>
+            <div class="team-pick">
+              <span class="side-tag con">反方</span>
+              <select name="conModel" aria-label="反方模型"></select>
+              <select name="conEffort" aria-label="反方思考强度" title="思考强度：用于构思与发言"></select>
+            </div>
+            <p id="team-hint" class="hint"></p>
+          </fieldset>
+          <label>
+            裁判组人数
+            <select name="judgeCount">
+              <option value="1">1 人</option>
+              <option value="3" selected>3 人</option>
+              <option value="5">5 人</option>
+            </select>
+          </label>
+          <p id="judge-hint" class="hint"></p>
+          <button type="submit" id="submit-btn">开始辩论</button>
+          <p id="form-error" class="error" hidden></p>
+        </form>
+
+        <section class="card">
+          <h2>历史辩论</h2>
+          <ul id="history" class="history"></ul>
+        </section>
+      </aside>
+
+      <main id="main">
+        <section class="card intro">
+          <h1>八位 AI 辩手，一场有据可查的辩论</h1>
+          <ol>
+            <li><b>八个独立的辩手 Agent</b>：正反各四位辩手各自联网检索、整理证据，同队四人共享证据库，对方的证据只有在发言中引用后才看得到。</li>
+            <li><b>证据可核对</b>：每条证据入库前都会打开网页、核对摘录原文，打不开或对不上的网页直接丢弃。</li>
+            <li><b>证据只在赛前收集</b>：检索结束后每条证据再复核一次，打不开或出处无法确定的删除，然后证据库封存，立论开始后谁都不能再检索。每方最多收集 20 条，全场最多使用 9 条。</li>
+            <li><b>先构思后发言</b>：立论 → 驳论 → 质询与小结 → 自由辩论 → 总结陈词。重要发言前先想清楚推理链，引用只用来支撑推理的关键一步。</li>
+            <li><b>证据质疑</b>：每方最多质疑对方证据 3 次，由中立的核查员打开原网页、联网搜索后当场公布结果。</li>
+            <li><b>裁判组评议</b>：多位侧重不同的裁判独立打分投票，并给每位辩手打分、评出最佳辩手。</li>
+          </ol>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

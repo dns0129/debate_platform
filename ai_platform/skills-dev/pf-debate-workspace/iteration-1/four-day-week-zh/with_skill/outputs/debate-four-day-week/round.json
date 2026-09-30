@@ -1,0 +1,171 @@
+{
+  "format": "public-forum",
+  "resolution": "中国应当全面推行每周四天工作制",
+  "title": "四天工作制之辩",
+  "lang": "zh",
+  "date": "2026-09-30",
+  "coin_toss": {
+    "winner": "pro",
+    "first": "pro"
+  },
+  "first": "pro",
+  "max_cards": 10,
+  "sealed": true,
+  "speakers": {
+    "pro1": {
+      "team": "pro",
+      "name": "正方一辩",
+      "persona": "架构师",
+      "style": "先划清战场：定义窄而准，论点之间层层递进；开场给出路线图，用结构本身说服人。避免只有标题没有推理。"
+    },
+    "pro2": {
+      "team": "pro",
+      "name": "正方二辩",
+      "persona": "反例猎手",
+      "style": "针对对方推理链最关键的一环集中火力，擅长用反例击穿全称判断；短句、有锋芒，反问后必须紧跟自己的回答。"
+    },
+    "con1": {
+      "team": "con",
+      "name": "反方一辩",
+      "persona": "案例派",
+      "style": "从具体情境切入，再抽象成原则；事实性案例必须来自证据，否则明说是假设推演。用细节代替形容词。"
+    },
+    "con2": {
+      "team": "con",
+      "name": "反方二辩",
+      "persona": "外科医生",
+      "style": "反驳前先公平复述对方推理链，再指出断在哪一步；冷静精确，只在决定胜负的环节动刀。"
+    }
+  },
+  "judges": [
+    {
+      "id": "flow",
+      "name": "技术型评委",
+      "style": "前辩手，逐条记录全场（flow）。只认在总结和焦点总结中延续下来的论点；被对方放过（dropped）的论点视为成立；要求比较性权衡；焦点总结里的新论点不予考虑。"
+    },
+    {
+      "id": "lay",
+      "name": "大众评委",
+      "style": "没有辩论经验的社区评委（如学生家长）。看哪一方讲得更清楚、更可信、更贴近常识；不熟悉术语，反感黑话和堆砌数据；凭整体印象判断，但明显的漏洞也看得出来。"
+    },
+    {
+      "id": "flay",
+      "name": "教练型评委",
+      "style": "辩论教练，论证与表达并重。会对照证据原文核对转述是否忠实，歪曲证据明显扣分；重视交叉质询中取得的让步是否被带进后续发言。"
+    }
+  ],
+  "segments": [
+    {
+      "n": 1,
+      "type": "constructive",
+      "speakers": [
+        "pro1"
+      ],
+      "minutes": 4,
+      "team": "pro",
+      "file": "public/01_constructive_pro.md"
+    },
+    {
+      "n": 2,
+      "type": "constructive",
+      "speakers": [
+        "con1"
+      ],
+      "minutes": 4,
+      "team": "con",
+      "file": "public/02_constructive_con.md"
+    },
+    {
+      "n": 3,
+      "type": "crossfire",
+      "speakers": [
+        "pro1",
+        "con1"
+      ],
+      "minutes": 3,
+      "file": "public/03_crossfire.md"
+    },
+    {
+      "n": 4,
+      "type": "rebuttal",
+      "speakers": [
+        "pro2"
+      ],
+      "minutes": 4,
+      "team": "pro",
+      "file": "public/04_rebuttal_pro.md"
+    },
+    {
+      "n": 5,
+      "type": "rebuttal",
+      "speakers": [
+        "con2"
+      ],
+      "minutes": 4,
+      "team": "con",
+      "file": "public/05_rebuttal_con.md"
+    },
+    {
+      "n": 6,
+      "type": "crossfire",
+      "speakers": [
+        "pro2",
+        "con2"
+      ],
+      "minutes": 3,
+      "file": "public/06_crossfire.md"
+    },
+    {
+      "n": 7,
+      "type": "summary",
+      "speakers": [
+        "pro1"
+      ],
+      "minutes": 3,
+      "team": "pro",
+      "file": "public/07_summary_pro.md"
+    },
+    {
+      "n": 8,
+      "type": "summary",
+      "speakers": [
+        "con1"
+      ],
+      "minutes": 3,
+      "team": "con",
+      "file": "public/08_summary_con.md"
+    },
+    {
+      "n": 9,
+      "type": "grand_crossfire",
+      "speakers": [
+        "pro1",
+        "pro2",
+        "con1",
+        "con2"
+      ],
+      "minutes": 3,
+      "file": "public/09_grand_crossfire.md"
+    },
+    {
+      "n": 10,
+      "type": "final_focus",
+      "speakers": [
+        "pro2"
+      ],
+      "minutes": 2,
+      "team": "pro",
+      "file": "public/10_final_focus_pro.md"
+    },
+    {
+      "n": 11,
+      "type": "final_focus",
+      "speakers": [
+        "con2"
+      ],
+      "minutes": 2,
+      "team": "con",
+      "file": "public/11_final_focus_con.md"
+    }
+  ]
+}

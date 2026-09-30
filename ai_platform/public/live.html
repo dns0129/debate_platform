@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>辩论直播</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="demo.css" />
+    <link rel="stylesheet" href="live.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">AI 辩论模拟平台</a>
+      <span id="mode-badge" class="badge"></span>
+      <a class="toplink" href="/">返回平台</a>
+    </header>
+
+    <div class="stage">
+      <section class="card demo-head">
+        <h1 id="topic">加载中…</h1>
+        <div class="stances">
+          <div class="stance pro"><span class="side-tag pro">正方</span> <span id="stance-pro"></span><div class="team-model" id="model-pro"></div></div>
+          <div class="stance con"><span class="side-tag con">反方</span> <span id="stance-con"></span><div class="team-model" id="model-con"></div></div>
+        </div>
+        <p class="rule" id="rule"></p>
+        <div class="stepper" id="stepper"></div>
+      </section>
+
+      <div class="bench" id="bench">
+        <div class="team pro" id="team-pro"></div>
+        <div class="hud">
+          <div class="now" id="now">连接中…</div>
+          <div class="challenge-count" id="challenge-count"></div>
+        </div>
+        <div class="team con" id="team-con"></div>
+      </div>
+
+      <main class="feed" id="feed"></main>
+      <div id="activity"></div>
+      <section id="after"></section>
+      <section class="card" id="log-card"></section>
+    </div>
+
+    <button id="follow" class="follow" hidden>↓ 跟随最新发言</button>
+
+    <script src="live.js" type="module"></script>
+  </body>
+</html>

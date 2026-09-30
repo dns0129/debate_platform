@@ -1,0 +1,6 @@
+✖ Invalid input: expected object, received array
+  → at con
+✖ Invalid option: expected one of "pro"|"con"
+  → at winner
+
+{"pro":{"argument":8,"evidence":6,"clash":8,"delivery":8},"con":{"argument":8,"evidence":7,"clash":8,"delivery":8},"debaters":[{"id":"pro-1","score":88,"comment":"立论三段链条清晰、界定与证据逐一咬合，答质询时对「公开承认即内在构成」的辩护诚实，但承认不幸与否取决于一次报道有无，反被反方抓住；宁铂诸证转述忠实、出处完整。"},{"id":"pro-2","score":86,"comment":"驳论逐条定位断点，并用抑郁首发于成年早期〔P2-3〕做时间错位反击很准；但核心机制证据〔P2-1〕的样本错位始终未补，反问「193人消失」略近无据暗示。"},{"id":"pro-3","score":90,"comment":"三轮质询最见功力，逼出反方承认曝光成本真实发生、由当事人独自承担、并计入其账上、年少者自我否定成本更大，小结归位清楚；唯用名校生个案〔P3-3〕推机制复现，变量不同，被反方点破。"},{"id":"pro-4","score":89,"comment":"总结以反方二辩「改到最好代价仍在」的自认钉住归因一环，并用群体均值不能替个体结算收束，说服力强；但未能补上本群体福祉数据这一缺口。"}],"con":[],"debaters_note":"","key":"","winner":"","reason":"","key_moments":[]}

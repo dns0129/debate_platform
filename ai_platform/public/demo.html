@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>辩论动态演示</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="demo.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">AI 辩论模拟平台</a>
+      <span class="badge mock">动态演示 · 占位内容</span>
+      <a class="toplink" href="/">返回平台</a>
+    </header>
+
+    <div class="stage">
+      <section class="card demo-head">
+        <h1 id="topic">加载中…</h1>
+        <div class="stances">
+          <div class="stance pro"><span class="side-tag pro">正方</span> <span id="stance-pro"></span></div>
+          <div class="stance con"><span class="side-tag con">反方</span> <span id="stance-con"></span></div>
+        </div>
+        <p class="rule" id="rule"></p>
+        <div class="stepper" id="stepper"></div>
+      </section>
+
+      <div class="bench" id="bench">
+        <div class="team pro" id="team-pro"></div>
+        <div class="hud">
+          <div class="now" id="now">准备开始</div>
+          <div class="controls">
+            <button id="btn-play" class="primary">▶ 开始模拟</button>
+            <div class="speed" id="speed" role="group" aria-label="播放速度">
+              <button data-speed="1" class="on">1×</button>
+              <button data-speed="2">2×</button>
+              <button data-speed="4">4×</button>
+            </div>
+            <button id="btn-skip" title="跳过当前等待或打字" aria-label="跳过当前等待或打字"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5l10 7-10 7z"/><path d="M19 5v14" fill="none"/></svg></button>
+            <button id="btn-end" title="直接看结果" aria-label="直接看结果"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5l8 7-8 7z"/><path d="M12 5l8 7-8 7z"/></svg></button>
+            <button id="btn-restart" title="重新开始" aria-label="重新开始"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v5h5"/></svg></button>
+          </div>
+        </div>
+        <div class="team con" id="team-con"></div>
+      </div>
+
+      <main class="feed" id="feed"></main>
+    </div>
+
+    <button id="follow" class="follow" hidden>↓ 跟随最新发言</button>
+
+    <script src="demo.js" type="module"></script>
+  </body>
+</html>

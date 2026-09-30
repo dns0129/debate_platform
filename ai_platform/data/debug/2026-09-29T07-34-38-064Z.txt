@@ -1,0 +1,12 @@
+✖ Invalid input: expected string, received undefined
+  → at definitions
+✖ Invalid input: expected string, received undefined
+  → at criterion
+✖ Invalid input: expected array, received undefined
+  → at points
+✖ Invalid input: expected string, received undefined
+  → at weighing
+✖ Invalid input: expected object, received undefined
+  → at challenge
+
+{}

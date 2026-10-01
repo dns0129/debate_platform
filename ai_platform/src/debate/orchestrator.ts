@@ -6,12 +6,15 @@ import { config } from "../config.js";
 import { describeError } from "../llm/client.js";
 import { defaultTeam, describeModel } from "../llm/models.js";
 import {
-  ALL_DEBATERS,
+  FORMAT_LABEL,
   SIDES,
   SIDE_LABEL,
-  STAGE_LABEL,
+  formatOf,
+  opponentOf,
+  stageLabel,
   type Challenge,
   type DebateRecord,
+  type Side,
   type Stage,
   type Turn,
 } from "../types.js";
@@ -23,7 +26,7 @@ import { formatUsage } from "./usage.js";
 import { checkChallenge, checkPlan, checkTurn, feedbackFor, planFeedback, type Issue } from "./validator.js";
 
 /**
- * 一场 8 人辩论的完整流程（与常见的四辩赛制一致）：
+ * 四辩制（正反各四人）的完整流程：
  *   赛前准备：8 位辩手各自检索、核对网页，证据汇入本方共享的证据库（并行）。这是全场唯一的检索机会
  *   封存证据库：每条证据再打开一次原网页复核，打不开、摘录不在或出处无法确定的删除，然后封存
  *   立论：正一 → 反一（从这里开始任何辩手都不能再收集新证据；每方全场最多使用 N 条证据）
@@ -32,6 +35,18 @@ import { checkChallenge, checkPlan, checkTurn, feedbackFor, planFeedback, type I
  *   自由辩论：双方交替发言
  *   总结陈词：反四 → 正四
  *   评委评议：裁判组独立评分 → 计票 → 主裁判综述
+ *
+ * 公共论坛制（Public Forum，正反各两人）：赛前准备与封存同上，然后掷硬币决定先发言方（下称 A 方，另一方为 B 方）：
+ *   立论：A1 → B1（各 4 分钟）
+ *   一辩交叉质询：A1 与 B1 轮流提问，每问一答
+ *   反驳：A2 → B2（各 4 分钟，B2 还要回应 A2 对本方立论的攻击）
+ *   二辩交叉质询：A2 与 B2 轮流提问
+ *   总结：A1 → B1（各 3 分钟）
+ *   全场交叉质询：四人轮流提问，每人问一次、答一次
+ *   焦点总结：A2 → B2（各 2 分钟，不得有新论点、新证据）
+ *   评委评议：同四辩制
+ * 交叉质询的每一问、每一答都由对应辩手的 Agent 独立写出，主持人不替任何一方说话。
+ *
  * 每段发言依次进行，后发言的辩手能听到之前所有公开发言。任何一方质疑对方证据后，当场核查并公开结果。
  */
 
@@ -56,10 +71,13 @@ async function settleAll<T>(tasks: Promise<T>[]): Promise<T[]> {
  * 赛程只由代码顺序和 record.rules 决定，快进时逐段核对发言人与类型，对不上就报错，不硬接。
  */
 export async function runDebate(record: DebateRecord, agents: AgentFactory, store: DebateStore) {
-  // 影响赛程的规则随记录保存：续跑时沿用开赛时的规则，不受之后修改 .env 的影响
+  const format = formatOf(record);
+  // 影响赛程的规则随记录保存：续跑时沿用开赛时的规则，不受之后修改 .env 的影响。
+  // 公共论坛制开赛时掷硬币决定先发言方
   const rules = (record.rules ??= {
     crossQuestionsPerTarget: config.crossQuestionsPerTarget,
     freeDebateTurns: config.freeDebateTurns,
+    ...(format === "pf" ? { first: SIDES[Math.floor(Math.random() * 2)], crossfireQuestions: config.pfCrossfireQuestions } : {}),
   });
   // 双方的模型同理：开赛时选定，续跑沿用（旧记录没有，按当前默认配置补上）
   const teams = (record.input.teams ??= { pro: defaultTeam(), con: defaultTeam() });
@@ -74,17 +92,20 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
   };
   const enter = (stage: Stage) => {
     record.stage = stage;
-    if (!replaying()) log(`进入「${STAGE_LABEL[stage]}」环节`);
+    if (!replaying()) log(`进入「${stageLabel(format, stage)}」环节`);
   };
-  const debaters = new Map<string, Debater>(ALL_DEBATERS.map((d) => [d.id, agents.debater(record, d.id)]));
+  const debaters = new Map<string, Debater>(record.debaters.map((d) => [d.id, agents.debater(record, d.id)]));
+  const debaterIds = record.debaters.map((d) => d.id);
+  const crowd = `${record.debaters.length === 4 ? "四" : "八"}位辩手`;
+  const label = (spec: TurnSpec) => turnLabel(spec, format);
   const agent = (id: string) => debaters.get(id)!;
 
   /** 快进一段已完成的发言：核对它就是赛程此处应有的发言；中断时还没核查完的质疑补跑核查。 */
   async function replay(id: string, spec: TurnSpec): Promise<Turn> {
     const turn = done[cursor++];
     if (turn.speaker !== id || turn.kind !== spec.kind || (turn.target ?? "") !== (spec.target ?? "")) {
-      const expected = `${nameOf(id)}${turnLabel(spec)}`;
-      const actual = `${nameOf(turn.speaker)}${turnLabel({ kind: turn.kind as TurnSpec["kind"], stage: turn.stage, target: turn.target })}`;
+      const expected = `${nameOf(id)}${label(spec)}`;
+      const actual = `${nameOf(turn.speaker)}${label({ kind: turn.kind as TurnSpec["kind"], stage: turn.stage, target: turn.target })}`;
       throw new Error(`记录与赛程不一致，无法续跑：第 ${turn.index + 1} 段应为${expected}，记录里是${actual}`);
     }
     const challenge = record.challenges.find((c) => c.id === turn.challengeId && c.turn === turn.index);
@@ -96,7 +117,7 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
   async function speak(id: string, spec: TurnSpec): Promise<Turn> {
     if (replaying()) return replay(id, spec);
     const me = debaterState(record, id);
-    const label = `${me.name}${turnLabel(spec)}`;
+    const title = `${me.name}${label(spec)}`;
     const index = record.turns.length;
     const planned = PLANNED_KINDS.includes(spec.kind);
 
@@ -106,20 +127,20 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
     if (saved) {
       plan = saved.plan as PlanDraft;
     } else if (planned) {
-      activity(`${me.name}正在构思${turnLabel(spec)}的逻辑链`, id);
+      activity(`${me.name}正在构思${label(spec)}的逻辑链`, id);
       plan = await agent(id).plan(spec);
       let problems = checkPlan(record, me, spec, plan);
       if (problems.length) {
-        log(`${label}构思有 ${problems.length} 处需完善（${problems[0]}${problems.length > 1 ? " 等" : ""}），已要求重新构思`, "warn");
+        log(`${title}构思有 ${problems.length} 处需完善（${problems[0]}${problems.length > 1 ? " 等" : ""}），已要求重新构思`, "warn");
         activity(`${me.name}正在完善构思`, id);
         plan = await agent(id).plan(spec, planFeedback(problems));
         problems = checkPlan(record, me, spec, plan);
-        if (problems.length) log(`${label}构思仍有 ${problems.length} 处未达要求：${problems.join("；")}`, "warn");
+        if (problems.length) log(`${title}构思仍有 ${problems.length} 处未达要求：${problems.join("；")}`, "warn");
       }
       me.plans.push({ turn: index, plan });
     }
 
-    activity(`${me.name}正在撰写${turnLabel(spec)}`, id);
+    activity(`${me.name}正在撰写${label(spec)}`, id);
     let written = await agent(id).write(spec, plan);
     let checked = checkTurn(record, me, spec, written, index);
     const everIssues = new Map<string, Issue>();
@@ -130,16 +151,16 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
         checked.issues.length ? `${checked.issues.length} 处无效引用` : "",
         checked.revisions.length ? `${checked.revisions.length} 处需修改（${checked.revisions[0]}${checked.revisions.length > 1 ? " 等" : ""}）` : "",
       ].filter(Boolean);
-      log(`${label}第 ${round} 稿有 ${problems.join("、")}，已要求修改`, "warn");
-      activity(`${me.name}正在修改${turnLabel(spec)}（第 ${round + 1} 稿）`, id);
+      log(`${title}第 ${round} 稿有 ${problems.join("、")}，已要求修改`, "warn");
+      activity(`${me.name}正在修改${label(spec)}（第 ${round + 1} 稿）`, id);
       written = await agent(id).write(spec, plan, feedbackFor(checked.issues, checked.revisions, checked.preview));
       checked = checkTurn(record, me, spec, written, index);
     }
     const remaining = new Set(checked.issues.map((i) => `${i.kind}:${i.ref}`));
     for (const [key, issue] of everIssues) if (!remaining.has(key)) record.violations.push({ ...issue, corrected: true });
     record.violations.push(...checked.issues.map((i) => ({ ...i, corrected: false })));
-    if (checked.issues.length) log(`${label}仍有 ${checked.issues.length} 处无效引用，已剔除并提交裁判组`, "warn");
-    if (checked.revisions.length) log(`${label}修改后仍有 ${checked.revisions.length} 处未达要求：${checked.revisions.join("；")}`, "warn");
+    if (checked.issues.length) log(`${title}仍有 ${checked.issues.length} 处无效引用，已剔除并提交裁判组`, "warn");
+    if (checked.revisions.length) log(`${title}修改后仍有 ${checked.revisions.length} 处未达要求：${checked.revisions.join("；")}`, "warn");
 
     // 公开发言；本方证据首次被引用时随之公开（不论是谁检索到的）
     const turn: Turn = { index, ...checked.turn };
@@ -150,7 +171,7 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
       if (e && e.disclosedAt === undefined) e.disclosedAt = index;
     }
     activity();
-    log(`${label}${turn.durationSec ? `（约 ${formatDuration(turn.durationSec)}）` : ""}`);
+    log(`${title}${turn.durationSec ? `（约 ${formatDuration(turn.durationSec)}）` : ""}`);
 
     const challenge = written.challenge ?? (planned ? plan?.challenge : null);
     if (challenge) await raiseChallenge(id, challenge, index);
@@ -211,7 +232,7 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
   /** 封存证据库：复核每条证据后按顺序重新编号（此时还没有证据公开，编号可以安全调整），此后不能再检索。 */
   async function lockEvidence() {
     activity("封存前复核：重新打开每条证据的原网页");
-    await settleAll(ALL_DEBATERS.map((d) => agent(d.id).recheck(log)));
+    await settleAll(record.debaters.map((d) => agent(d.id).recheck(log)));
     for (const d of record.debaters) {
       const prefix = `${d.side === "pro" ? "P" : "C"}${d.position}`;
       d.bank.forEach((e, i) => (e.id = `${prefix}-${i + 1}`));
@@ -224,31 +245,8 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
     activity();
   }
 
-  try {
-    // 赛前准备：8 位辩手并行（博查搜索在全局排队限速）。
-    // 已有发言就说明证据库早已封存（旧版记录没有 evidenceLockedAt），绝不能再封存一次：封存会给证据重新编号，已有发言里的引用会全部错位
-    if (!record.evidenceLockedAt && done.length === 0) {
-      if (record.log.length === 0) {
-        log(SIDES.map((side) => `${SIDE_LABEL[side]}：${describeModel(teams[side].model, teams[side].effort)}`).join("　"));
-      }
-      enter("research");
-      activity("八位辩手正在独立检索资料、打开网页核对原文");
-      await settleAll(
-        ALL_DEBATERS.map(async (d) => {
-          const me = debaterState(record, d.id);
-          if (me.prepared) return; // 续跑：中断前已经准备完成的辩手不再检索
-          await agent(d.id).prepare(log);
-          me.prepared = true;
-          const ok = me.searchCalls.filter((c) => c.ok).length;
-          log(
-            `${d.name}准备完成：博查搜索 ${ok}/${me.searchCalls.length} 次成功，丢弃 ${me.rejectedPages.length} 个无法核对的网页，证据库 ${me.bank.length} 条`,
-            me.bank.length ? "info" : "warn",
-          );
-        }),
-      );
-      await lockEvidence();
-    }
-
+  /** 四辩制：立论 → 驳论 → 质询与小结 → 自由辩论 → 总结陈词。 */
+  async function fourRounds() {
     enter("opening");
     await speak("pro-1", { kind: "opening", stage: "opening" });
     await speak("con-1", { kind: "opening", stage: "opening" });
@@ -279,6 +277,93 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
     enter("closing");
     await speak("con-4", { kind: "closing", stage: "closing" });
     await speak("pro-4", { kind: "closing", stage: "closing" });
+  }
+
+  /**
+   * 公共论坛制的一轮交叉质询：按 pairs 轮流提问（[提问者, 被问者]），每方各问 crossfireQuestions 次，每问之后被问者作答。
+   * 问与答都由对应辩手独立写出：提问者看到的是公开记录（含刚才的回答），可以追问。
+   */
+  async function crossfire(stage: Stage, pairs: [string, string][]) {
+    const total = (rules.crossfireQuestions ?? config.pfCrossfireQuestions) * 2;
+    for (let i = 0; i < total; i++) {
+      const [asker, target] = pairs[i % pairs.length];
+      const q = await speak(asker, { kind: "question", stage, target, round: i + 1, rounds: total });
+      await speak(target, { kind: "answer", stage, target: asker, question: q.text });
+    }
+  }
+
+  /** 公共论坛制：A 方为掷硬币决定的先发言方。 */
+  async function pfRounds() {
+    const first: Side = rules.first ?? "pro";
+    const a = (n: number) => `${first}-${n}`;
+    const b = (n: number) => `${opponentOf(first)}-${n}`;
+
+    enter("opening");
+    await speak(a(1), { kind: "opening", stage: "opening" });
+    await speak(b(1), { kind: "opening", stage: "opening" });
+
+    enter("crossfire1");
+    await crossfire("crossfire1", [
+      [a(1), b(1)],
+      [b(1), a(1)],
+    ]);
+
+    enter("rebuttal");
+    await speak(a(2), { kind: "rebuttal", stage: "rebuttal" });
+    await speak(b(2), { kind: "rebuttal", stage: "rebuttal" });
+
+    enter("crossfire2");
+    await crossfire("crossfire2", [
+      [a(2), b(2)],
+      [b(2), a(2)],
+    ]);
+
+    enter("pf_summary");
+    await speak(a(1), { kind: "pf_summary", stage: "pf_summary" });
+    await speak(b(1), { kind: "pf_summary", stage: "pf_summary" });
+
+    // 全场：先由 A 方总结的辩手发问，此后两队交替，四人各问一次、各答一次
+    enter("grand_crossfire");
+    await crossfire("grand_crossfire", [
+      [a(1), b(1)],
+      [b(2), a(2)],
+      [a(2), b(2)],
+      [b(1), a(1)],
+    ]);
+
+    enter("final_focus");
+    await speak(a(2), { kind: "final_focus", stage: "final_focus" });
+    await speak(b(2), { kind: "final_focus", stage: "final_focus" });
+  }
+
+  try {
+    // 赛前准备：全部辩手并行（博查搜索在全局排队限速）。
+    // 已有发言就说明证据库早已封存（旧版记录没有 evidenceLockedAt），绝不能再封存一次：封存会给证据重新编号，已有发言里的引用会全部错位
+    if (!record.evidenceLockedAt && done.length === 0) {
+      if (record.log.length === 0) {
+        log(`${FORMAT_LABEL[format]}　${SIDES.map((side) => `${SIDE_LABEL[side]}：${describeModel(teams[side].model, teams[side].effort)}`).join("　")}`);
+        if (format === "pf") log(`掷硬币：${SIDE_LABEL[rules.first ?? "pro"]}先发言`);
+      }
+      enter("research");
+      activity(`${crowd}正在独立检索资料、打开网页核对原文`);
+      await settleAll(
+        record.debaters.map(async (d) => {
+          const me = debaterState(record, d.id);
+          if (me.prepared) return; // 续跑：中断前已经准备完成的辩手不再检索
+          await agent(d.id).prepare(log);
+          me.prepared = true;
+          const ok = me.searchCalls.filter((c) => c.ok).length;
+          log(
+            `${d.name}准备完成：博查搜索 ${ok}/${me.searchCalls.length} 次成功，丢弃 ${me.rejectedPages.length} 个无法核对的网页，证据库 ${me.bank.length} 条`,
+            me.bank.length ? "info" : "warn",
+          );
+        }),
+      );
+      await lockEvidence();
+    }
+
+    if (format === "pf") await pfRounds();
+    else await fourRounds();
 
     enter("judging");
     activity("评委组正在独立评议");
@@ -288,7 +373,7 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
         // 续跑：中断前已经交卷的裁判不再重评
         const existing = record.judges.find((j) => j.judgeId === persona.id);
         if (existing) return existing;
-        const result = toJudgeResult(persona, await agents.judge(record, persona));
+        const result = toJudgeResult(persona, await agents.judge(record, persona), debaterIds);
         record.judges.push(result);
         log(`${persona.name}投票给${SIDE_LABEL[result.winner]}（正方 ${result.scores.pro.total} : 反方 ${result.scores.con.total}）`);
         return result;
@@ -296,7 +381,7 @@ export async function runDebate(record: DebateRecord, agents: AgentFactory, stor
     );
     record.judges = results; // 按裁判固定顺序展示
 
-    const counted = tally(results);
+    const counted = tally(results, debaterIds);
     activity("主裁判正在撰写综合评议");
     const summary = await agents.summarize(record, results, counted);
     record.verdict = { ...counted, summary };

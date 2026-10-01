@@ -111,7 +111,7 @@ export const JudgeDraft = z.object({
         comment: z.string().describe("一句话点评"),
       }),
     )
-    .describe("八位辩手的个人得分，每人一条"),
+    .describe("本场每位辩手的个人得分（辩手编号见材料中的辩手列表），每人一条"),
   winner: z.enum(["pro", "con"]).describe("胜方：pro=正方，con=反方"),
   reason: z.string().describe("200 字以内的判决理由"),
   key_moments: z.array(z.string()).describe("决定胜负的 2-4 个关键交锋，每条一句话"),

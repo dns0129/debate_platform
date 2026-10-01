@@ -18,6 +18,14 @@
         <form id="debate-form" class="card">
           <h2>发起一场辩论</h2>
           <label>
+            赛制
+            <select name="format">
+              <option value="four" selected>四辩制 · 正反各 4 人</option>
+              <option value="pf">公共论坛制（PF）· 正反各 2 人</option>
+            </select>
+          </label>
+          <p id="format-hint" class="hint"></p>
+          <label>
             论题
             <input name="topic" required maxlength="500" placeholder="例如：人工智能的发展利大于弊" />
           </label>
@@ -30,7 +38,7 @@
             <textarea name="conStance" required maxlength="500" rows="3" placeholder="例如：人工智能的发展弊大于利"></textarea>
           </label>
           <fieldset class="team-models">
-            <legend>双方模型 <span class="legend-note">同队四位辩手使用同一个模型</span></legend>
+            <legend>双方模型 <span class="legend-note">同队辩手使用同一个模型</span></legend>
             <div class="team-pick">
               <span class="side-tag pro">正方</span>
               <select name="proModel" aria-label="正方模型"></select>
@@ -64,12 +72,12 @@
 
       <main id="main">
         <section class="card intro">
-          <h1>八位 AI 辩手，一场有据可查的辩论</h1>
+          <h1>独立的 AI 辩手，一场有据可查的辩论</h1>
           <ol>
-            <li><b>八个独立的辩手 Agent</b>：正反各四位辩手各自联网检索、整理证据，同队四人共享证据库，对方的证据只有在发言中引用后才看得到。</li>
+            <li><b>每位辩手都是独立的 Agent</b>：四辩制正反各四人，公共论坛制（PF）正反各两人。辩手各自联网检索、整理证据，同队共享证据库，对方的证据只有在发言中引用后才看得到。</li>
             <li><b>证据可核对</b>：每条证据入库前都会打开网页、核对摘录原文，打不开或对不上的网页直接丢弃。</li>
             <li><b>证据只在赛前收集</b>：检索结束后每条证据再复核一次，打不开或出处无法确定的删除，然后证据库封存，立论开始后谁都不能再检索。每方最多收集 20 条，全场最多使用 9 条。</li>
-            <li><b>先构思后发言</b>：立论 → 驳论 → 质询与小结 → 自由辩论 → 总结陈词。重要发言前先想清楚推理链，引用只用来支撑推理的关键一步。</li>
+            <li><b>先构思后发言</b>：四辩制是立论 → 驳论 → 质询与小结 → 自由辩论 → 总结陈词；公共论坛制是立论 → 交叉质询 → 反驳 → 交叉质询 → 总结 → 全场交叉质询 → 焦点总结，交叉质询的每一问、每一答都由对应辩手独立作答。重要发言前先想清楚推理链，引用只用来支撑推理的关键一步。</li>
             <li><b>证据质疑</b>：每方最多质疑对方证据 3 次，由中立的核查员打开原网页、联网搜索后当场公布结果。</li>
             <li><b>裁判组评议</b>：多位侧重不同的裁判独立打分投票，并给每位辩手打分、评出最佳辩手。</li>
           </ol>

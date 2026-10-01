@@ -14,8 +14,11 @@ import { callStructured } from "../llm/client.js";
 import { teamModel } from "../llm/models.js";
 import {
   SIDE_LABEL,
-  TURN_LABEL,
+  TEAM_SIZE,
+  formatOf,
   opponentOf,
+  turnKindLabel,
+  type DebateFormat,
   type DebateRecord,
   type DebaterState,
   type ProgressLog,
@@ -23,10 +26,11 @@ import {
   type TurnKind,
 } from "../types.js";
 import { DEBATER_PERSONAS, formatPersona } from "./personas.js";
-import { PREP_FOCUS, collectQuota, recheckEvidence, research } from "./researcher.js";
+import { PF_RULES, pfDuty, pfTask } from "./pf.js";
+import { PF_PREP_FOCUS, PREP_FOCUS, collectQuota, recheckEvidence, research } from "./researcher.js";
 import { AnswerDraft, FreeDraft, OpeningDraft, PlanDraft, QuestionDraft, SpeechDraft } from "./schemas.js";
 
-// 辩手 Agent：8 位辩手各是一个独立的 Agent。
+// 辩手 Agent：每位辩手（四辩制 8 位，公共论坛制 4 位）各是一个独立的 Agent。
 // - 身份与职责：所在方、辩位和该辩位的职责；
 // - 本方资料：自己检索、核对、整理的证据汇入本方共享的证据库，队友检索到的也能用；对方看不到尚未公开的部分；
 // - 私有记忆：自己每次发言前的构思（逻辑链、证据分工），只有自己能回看；
@@ -47,7 +51,7 @@ export interface TurnSpec {
   rounds?: number;
 }
 
-export const PLANNED_KINDS: SpeakingKind[] = ["opening", "rebuttal", "summary", "closing"];
+export const PLANNED_KINDS: SpeakingKind[] = ["opening", "rebuttal", "summary", "closing", "pf_summary", "final_focus"];
 
 export interface ChallengeRequest {
   evidence_id: string;
@@ -85,16 +89,20 @@ export function challengesLeft(record: DebateRecord, side: "pro" | "con"): numbe
 }
 
 /**
- * 八位辩手共用的系统提示：只有论题和规则，不含个人身份和随比赛变化的内容（如剩余质疑次数），
+ * 全场辩手共用的系统提示：只有论题和规则，不含个人身份和随比赛变化的内容（如剩余质疑次数），
  * 保证每次调用的开头完全相同，才能命中前缀缓存。身份与职责放在用户消息里。
  */
 function systemPrompt(record: DebateRecord): string {
   const { topic, proStance, conStance } = record.input;
-  return `你是一场正式中文辩论赛中一位独立思考的辩手。正反双方各四位辩手，你是哪一位、职责是什么，见用户消息中的【你的身份】。同队四位辩手共享本方证据库；你能看到公开发言记录、本方证据库和对方已公开的证据，看不到对方尚未公开的证据。
+  const pf = formatOf(record) === "pf";
+  const opening = pf
+    ? "你是一场公共论坛制（Public Forum，PF）中文辩论赛中一位独立思考的辩手。正反双方各两位辩手：一辩负责立论和总结，二辩负责反驳和焦点总结，双方还要在三轮交叉质询中直接问答。你是哪一位、职责是什么，见用户消息中的【你的身份】。两位队友共享本方证据库"
+    : "你是一场正式中文辩论赛中一位独立思考的辩手。正反双方各四位辩手，你是哪一位、职责是什么，见用户消息中的【你的身份】。同队四位辩手共享本方证据库";
+  return `${opening}；你能看到公开发言记录、本方证据库和对方已公开的证据，看不到对方尚未公开的证据。
 论题：${topic}
 正方立场：${proStance}
 反方立场：${conStance}
-
+${pf ? `\n${PF_RULES}\n` : ""}
 【论证要求】
 1. 先有推理，后有证据。每个论点都要讲清推理链：前提是什么、如何一步步推出结论、为什么这样推成立。证据只用来支撑推理中需要事实的那一步，不能用引用代替推理。
 2. 每个论点最多引用 ${config.maxEvidencePerPoint} 条证据；一段发言中，含引用的句子不超过全文的 ${Math.round(config.maxCitationRatio * 100)}%。
@@ -118,8 +126,9 @@ function systemPrompt(record: DebateRecord): string {
 /** 这位辩手的身份、职责与剩余质疑次数。 */
 function identity(record: DebateRecord, me: DebaterState): string {
   const own = me.side === "pro" ? record.input.proStance : record.input.conStance;
+  const duty = formatOf(record) === "pf" ? pfDuty(me.position) : ROLE_DUTY[me.position];
   return `【你的身份】你是${me.name}，${SIDE_LABEL[me.side]}立场：${own}
-你的职责：${ROLE_DUTY[me.position]}
+你的职责：${duty}
 ${formatPersona(me.id)}
 你方还可以质疑对方证据 ${challengesLeft(record, me.side)} 次。
 本方证据已使用 ${evidenceUsed(record, me.side)}/${config.maxEvidenceUsedPerSide} 条，还可以首次引用 ${evidenceLeft(record, me.side)} 条。`;
@@ -135,7 +144,7 @@ function formatOwnPlans(me: DebaterState): string {
   return `【你之前的构思】（仅你本人可见）\n${lines.join("\n")}`;
 }
 
-// 材料按「全场相同 → 本方相同 → 本人」排列：发言记录对八位辩手都一样，本方证据库对四位队友都一样。
+// 材料按「全场相同 → 本方相同 → 本人」排列：发言记录对全场辩手都一样，本方证据库对同队辩手都一样。
 // 这样每次调用的长前缀都和上一次调用相同，能命中前缀缓存（同队四人用同一个模型），只有新增的部分按原价计费。
 function context(record: DebateRecord, me: DebaterState): string {
   return [
@@ -155,6 +164,7 @@ function lastOpponentTurn(record: DebateRecord, me: DebaterState) {
 
 /** 各环节要做什么。 */
 function task(record: DebateRecord, me: DebaterState, spec: TurnSpec, planning: boolean): string {
+  if (formatOf(record) === "pf") return pfTask(record, me, spec, planning);
   const { target, min, max } = openingTarget();
   const opp = SIDE_LABEL[opponentOf(me.side)];
   switch (spec.kind) {
@@ -184,6 +194,8 @@ function task(record: DebateRecord, me: DebaterState, spec: TurnSpec, planning: 
       const last = lastOpponentTurn(record, me);
       return `现在是【自由辩论】第 ${spec.round}/${spec.rounds} 轮，轮到你发言。${last ? `紧扣${nameOf(last.speaker)}刚才的话回应，` : ""}简短有力，一次只打一个点。如果你有具体理由怀疑对方某条已公开证据，可以提出质疑。`;
     }
+    default:
+      return "";
   }
 }
 
@@ -216,10 +228,12 @@ export class ModelDebater implements Debater {
 
   async prepare(log?: ProgressLog) {
     const me = this.me;
+    const format = formatOf(this.record);
+    const focus = format === "pf" ? PF_PREP_FOCUS[me.position] : PREP_FOCUS[me.position];
     const found = await research(this.record, me, {
-      focus: [PREP_FOCUS[me.position], DEBATER_PERSONAS[me.id]?.research].filter(Boolean).join("\n"),
+      focus: [focus, DEBATER_PERSONAS[me.id]?.research].filter(Boolean).join("\n"),
       maxSearches: config.searchesPerDebater,
-      maxNewEvidence: collectQuota(me.position),
+      maxNewEvidence: collectQuota(me.position, TEAM_SIZE[format]),
       purpose: "赛前准备",
       log,
     });
@@ -250,7 +264,7 @@ export class ModelDebater implements Debater {
         context(this.record, me),
         plan ? formatPlanForWriting(plan) : "",
         task(this.record, me, spec, false),
-        spec.kind === "opening" ? openingBudgetLine(plan?.points.length || 3) : "",
+        spec.kind === "opening" ? openingBudgetLine(plan?.points.length || 3, formatOf(this.record)) : "",
       ]
         .filter(Boolean)
         .join("\n\n"),
@@ -286,5 +300,7 @@ export class ModelDebater implements Debater {
   }
 }
 
-export const turnLabel = (spec: TurnSpec) =>
-  spec.kind === "question" ? `质询${nameOf(spec.target ?? "")}` : spec.kind === "answer" ? "答质询" : TURN_LABEL[spec.kind];
+export const turnLabel = (spec: TurnSpec, format: DebateFormat = "four") =>
+  spec.kind === "question"
+    ? `${turnKindLabel(format, "question")}${nameOf(spec.target ?? "")}`
+    : turnKindLabel(format, spec.kind);

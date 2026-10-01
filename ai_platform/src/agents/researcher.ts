@@ -8,6 +8,8 @@ import { SearchError, bochaSearch, type SearchResult } from "../search/bocha.js"
 import { excerptAround, fetchPages, isBlocked, normalize, quoteInPage } from "../search/page.js";
 import {
   SIDE_LABEL,
+  TEAM_SIZE,
+  formatOf,
   opponentOf,
   type DebateInput,
   type DebateRecord,
@@ -19,7 +21,7 @@ import {
 } from "../types.js";
 import { ResearchDraft } from "./schemas.js";
 
-// 辩手的检索：每位辩手自己决定搜什么、自己整理证据，证据记在自己名下，汇入本方四位辩手共享的证据库。
+// 辩手的检索：每位辩手自己决定搜什么、自己整理证据，证据记在自己名下，汇入本方辩手共享的证据库。
 // 证据入库要过三道核对，全部由代码完成：
 //   1. 网页能打开：实际请求网页，返回正常且有正文（平台在用户本机运行，这里能打开，用户也能打开）；
 //   2. 搜索摘要与网页对得上：摘要里的句子能在网页正文中找到，否则说明网页靠脚本渲染或摘要不可信；
@@ -57,6 +59,12 @@ function knownPages(record: DebateRecord, side: Side): Set<string> {
   if (!bySide) teamPages.set(record, (bySide = { pro: new Set(), con: new Set() }));
   return bySide[side];
 }
+
+/** 公共论坛制两个辩位赛前准备的检索重点。 */
+export const PF_PREP_FOCUS: Record<number, string> = {
+  1: "你负责立论（4 分钟）和总结（3 分钟）：寻找能支撑己方 2-3 个论点的核心证据。每个论点按「现状如何 → 我方立场带来什么改变 → 改变导致什么影响、影响多大」组织，证据只找推理链中最需要事实支撑的那一环：权威统计、研究结论、典型案例。",
+  2: "你负责反驳（4 分钟）和焦点总结（2 分钟）：预判对方最可能提出的论点，寻找能削弱或反转它们的事实与研究（对方的因果链接哪一环不成立、对方的数据有什么局限），以及能比较双方影响的权衡材料（涉及多少人、可能性多大、多快发生、能否逆转）。",
+};
 
 /** 各辩位赛前准备的检索重点。 */
 export const PREP_FOCUS: Record<number, string> = {
@@ -114,7 +122,7 @@ export async function research(record: DebateRecord, me: DebaterState, opts: Res
 
   await callWithTools({
     model,
-    system: `你是辩论赛的${me.name}，正在为自己的发言检索资料。你找到的证据会进入本方四位辩手共享的证据库，对方看不到。
+    system: `你是辩论赛的${me.name}，正在为自己的发言检索资料。你找到的证据会进入本方${TEAM_SIZE[formatOf(record)] === 2 ? "两" : "四"}位辩手共享的证据库，对方看不到。
 ${opts.focus}
 
 检索要求：
@@ -223,10 +231,10 @@ ${pages.map(formatPage).join("\n\n")}
   return buildEvidence(me, teamEvidence(record, me.side), draft, pages, opts.maxNewEvidence);
 }
 
-/** 每方证据库上限按辩位平均分给四位辩手（四人并行检索，各自只能整理自己的份额），除不尽的余数给靠前的辩位。 */
-export function collectQuota(position: number): number {
-  const base = Math.floor(config.evidencePerSide / 4);
-  return base + (position <= config.evidencePerSide % 4 ? 1 : 0);
+/** 每方证据库上限按辩位平均分给本方辩手（并行检索，各自只能整理自己的份额），除不尽的余数给靠前的辩位。 */
+export function collectQuota(position: number, teamSize = 4): number {
+  const base = Math.floor(config.evidencePerSide / teamSize);
+  return base + (position <= config.evidencePerSide % teamSize ? 1 : 0);
 }
 
 /**

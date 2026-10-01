@@ -1,4 +1,4 @@
-// 辩论直播：订阅服务端推送的辩论记录，按发言顺序逐段呈现 8 位辩手的发言。
+// 辩论直播：订阅服务端推送的辩论记录，按发言顺序逐段呈现辩手的发言（四辩制 8 人，公共论坛制 4 人）。
 // 比赛中只显示公开信息；辩手的资料（本方共享的证据库、检索记录、个人构思）在赛后统一公开。
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -24,7 +24,7 @@ const GEAR = `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24
 const GEARS = `<div class="gears"><span class="g big">${GEAR}</span><span class="g small">${GEAR}</span></div>`;
 
 const SIDE = { pro: "正方", con: "反方" };
-const STAGES = [
+const FOUR_STAGES = [
   ["research", "赛前准备"],
   ["opening", "立论"],
   ["rebuttal", "驳论"],
@@ -33,7 +33,18 @@ const STAGES = [
   ["closing", "总结陈词"],
   ["judging", "评委评议"],
 ];
-const STAGE_LABEL = Object.fromEntries(STAGES);
+// 公共论坛制：三轮交叉质询的问与答都由辩手独立作答
+const PF_STAGES = [
+  ["research", "赛前准备"],
+  ["opening", "立论"],
+  ["crossfire1", "一辩交叉质询"],
+  ["rebuttal", "反驳"],
+  ["crossfire2", "二辩交叉质询"],
+  ["pf_summary", "总结"],
+  ["grand_crossfire", "全场交叉质询"],
+  ["final_focus", "焦点总结"],
+  ["judging", "评委评议"],
+];
 const TURN_LABEL = {
   opening: "立论",
   rebuttal: "驳论",
@@ -42,8 +53,11 @@ const TURN_LABEL = {
   summary: "质询小结",
   free: "自由辩论",
   closing: "总结陈词",
+  pf_summary: "总结",
+  final_focus: "焦点总结",
   check: "证据核查",
 };
+const PF_TURN_LABEL = { rebuttal: "反驳", question: "交叉质询", answer: "答交叉质询" };
 const CRITERIA = [
   ["argument", "论证质量"],
   ["evidence", "证据运用"],
@@ -63,6 +77,13 @@ let afterRendered = false;
 let following = true;
 
 // ---------------- 数据索引 ----------------
+
+const isPf = () => record?.input?.format === "pf";
+const stages = () => (isPf() ? PF_STAGES : FOUR_STAGES);
+const stageLabel = (stage) => Object.fromEntries(stages())[stage] ?? stage;
+const turnLabel = (kind) => (isPf() && PF_TURN_LABEL[kind]) || TURN_LABEL[kind];
+/** 「八位辩手」「四位辩手」 */
+const crowd = () => `${record.debaters.length === 4 ? "四" : "八"}位辩手`;
 
 const debaterOf = (id) => record.debaters.find((d) => d.id === id);
 const nameOf = (id) => (id === "referee" ? "证据核查" : debaterOf(id)?.name ?? id);
@@ -121,13 +142,18 @@ function renderHead() {
   $("#stance-pro").textContent = record.input.proStance;
   $("#stance-con").textContent = record.input.conStance;
   for (const side of ["pro", "con"]) $(`#model-${side}`).innerHTML = teamModelHtml(record.input.teams?.[side]);
-  $("#rule").innerHTML = `${ICON.lock}<span>八位辩手是八个独立的 Agent：各自检索、核对并整理证据，同队四人共享证据库，对方看不到；辩手能看到公开发言、本方证据库和对方已公开的证据。证据只能在赛前准备中检索，立论开始前复核并封存：打不开或出处无法确定的证据一律删除；每方最多收集 ${appConfig.evidencePerSide ?? 20} 条、全场最多使用 ${appConfig.maxEvidenceUsedPerSide ?? 9} 条。每方最多质疑对方证据 ${appConfig.maxChallengesPerSide ?? 3} 次，由中立的核查员联网核查。</span>`;
+  const pfNote = isPf()
+    ? `公共论坛制（PF）：正反各两位辩手，掷硬币决定${SIDE[record.rules?.first ?? "pro"]}先发言；三轮交叉质询的每一问、每一答都由对应辩手独立作答。`
+    : "";
+  const team = isPf() ? "同队两人" : "同队四人";
+  $("#rule").innerHTML = `${ICON.lock}<span>${pfNote}${crowd()}是${crowd()[0]}个独立的 Agent：各自检索、核对并整理证据，${team}共享证据库，对方看不到；辩手能看到公开发言、本方证据库和对方已公开的证据。证据只能在赛前准备中检索，立论开始前复核并封存：打不开或出处无法确定的证据一律删除；每方最多收集 ${appConfig.evidencePerSide ?? 20} 条、全场最多使用 ${appConfig.maxEvidenceUsedPerSide ?? 9} 条。每方最多质疑对方证据 ${appConfig.maxChallengesPerSide ?? 3} 次，由中立的核查员联网核查。</span>`;
   const badge = $("#mode-badge");
   badge.textContent = record.mock ? "演示模式 · 不联网" : "实时辩论";
   badge.classList.toggle("mock", record.mock);
 
-  const cur = record.stage === "finished" ? STAGES.length : STAGES.findIndex(([s]) => s === record.stage);
-  $("#stepper").innerHTML = STAGES.map(([, label], i) => {
+  const list = stages();
+  const cur = record.stage === "finished" ? list.length : list.findIndex(([s]) => s === record.stage);
+  $("#stepper").innerHTML = list.map(([, label], i) => {
     let cls = "";
     if (i < cur || record.status === "done") cls = "done";
     else if (i === cur) cls = record.status === "error" ? "failed" : "active";
@@ -179,7 +205,7 @@ function renderBench() {
       ? esc(record.activity.label)
       : record.status === "done"
         ? "辩论结束 · 点击席位查看辩手资料"
-        : `${STAGE_LABEL[record.stage] ?? ""}`;
+        : `${stageLabel(record.stage)}`;
 }
 
 // ---------------- 发言流 ----------------
@@ -196,7 +222,7 @@ function researchCard() {
     })
     .join("");
   return `<section class="card research-card" id="research-card">
-    <div class="section-title">赛前准备 · 八位辩手独立检索</div>
+    <div class="section-title">赛前准备 · ${crowd()}独立检索</div>
     <p class="hint">每位辩手自己决定搜什么，打开每个网页核对原文，打不开或对不上的网页直接丢弃。检索结束后每条证据再复核一次，打不开或出处无法确定的删除，然后证据库封存${record.evidenceLockedAt ? `（已于 ${esc(dateTimeOf(record.evidenceLockedAt))} 封存）` : ""}，立论开始后不能再检索。证据内容赛后公开。</p>
     <div class="rc-grid">${cells}</div>
   </section>`;
@@ -208,7 +234,11 @@ function turnCard(t) {
   const short = ["question", "answer", "free"].includes(t.kind) ? "short" : "";
   const badge = t.kind === "question" ? `<span class="qa-badge">问</span>` : t.kind === "answer" ? `<span class="qa-badge">答</span>` : "";
   const tag =
-    t.kind === "question" ? `质询 · 问${nameOf(t.target)}` : t.kind === "answer" ? `答${nameOf(t.target)}质询` : TURN_LABEL[t.kind];
+    t.kind === "question"
+      ? `${turnLabel("question")} · 问${nameOf(t.target)}`
+      : t.kind === "answer"
+        ? `答${nameOf(t.target)}${isPf() ? "的交叉质询" : "质询"}`
+        : turnLabel(t.kind);
   const duration = t.durationSec && !short ? `<span class="duration">约 ${formatDuration(t.durationSec)} · ${t.spokenChars} 字</span>` : "";
   const body = t.parts
     ? t.parts
@@ -260,7 +290,7 @@ function checkCard(t) {
 function appendTurn(t, animate) {
   if (t.stage !== lastStage) {
     lastStage = t.stage;
-    feed.insertAdjacentHTML("beforeend", `<div class="divider"><span>${esc(STAGE_LABEL[t.stage] ?? t.stage)}</span></div>`);
+    feed.insertAdjacentHTML("beforeend", `<div class="divider"><span>${esc(stageLabel(t.stage))}</span></div>`);
   }
   const tpl = document.createElement("template");
   tpl.innerHTML = turnCard(t).trim();
@@ -397,7 +427,7 @@ function explorerHtml() {
   return `<div class="divider"><span>赛后公开 · 辩手资料</span></div>
     <section class="card explorer enter" id="explorer">
       <div class="explorer-head">
-        <div class="explorer-title">${ICON.folder}<b>八位辩手的资料</b></div>
+        <div class="explorer-title">${ICON.folder}<b>${crowd()}的资料</b></div>
         <div class="explorer-sub">共 ${total} 条证据，其中 ${disclosed} 条在比赛中被引用公开；灰色为未引用，删除线为核查不成立</div>
       </div>
       <div class="explorer-body">
@@ -423,7 +453,7 @@ function evidencePreview(e) {
     <blockquote class="quote">${esc(s.quote)}</blockquote>
     <p class="src-line">网页：<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>${s.site ? ` · ${esc(s.site)}` : ""}${s.published ? ` · ${esc(s.published)}` : ""}</p>
     ${s.checkedAt ? `<p class="src-line">✓ ${esc(dateTimeOf(s.checkedAt))} 打开网页核对到摘录原文</p>` : ""}
-    ${usedIn.length ? `<p class="src-line">被引用：${usedIn.map((t) => `第 ${t.index + 1} 段（${nameOf(t.speaker)}${TURN_LABEL[t.kind]}）`).join("、")}</p>` : ""}
+    ${usedIn.length ? `<p class="src-line">被引用：${usedIn.map((t) => `第 ${t.index + 1} 段（${nameOf(t.speaker)}${turnLabel(t.kind)}）`).join("、")}</p>` : ""}
     ${challenged ? `<p class="src-line">被${nameOf(challenged.by)}质疑，核查结论：${esc(challenged.verdict ?? "")}。${esc(challenged.explanation ?? "")}</p>` : ""}`;
 }
 
@@ -452,7 +482,7 @@ function plansPreview(d) {
   const blocks = d.plans
     .map(({ turn, plan }) => {
       const t = record.turns[turn];
-      const head = t ? `第 ${turn + 1} 段 · ${TURN_LABEL[t.kind]}` : `第 ${turn + 1} 段`;
+      const head = t ? `第 ${turn + 1} 段 · ${turnLabel(t.kind)}` : `第 ${turn + 1} 段`;
       const points = plan.points
         .map(
           (p) => `<li><b>${esc(p.claim)}</b>${p.responds_to ? `<div class="src-meta">回应：${esc(p.responds_to)}</div>` : ""}

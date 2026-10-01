@@ -2,11 +2,12 @@ import type { Debater, TurnSpec, WrittenTurn } from "../agents/debater.js";
 import type { AgentFactory } from "../agents/index.js";
 import { collectQuota } from "../agents/researcher.js";
 import type { JudgeDraft, PlanDraft } from "../agents/schemas.js";
-import { openingTarget, sourceName, spokenChars } from "../debate/citation.js";
+import { openingTarget, pfRange, sourceName, spokenChars } from "../debate/citation.js";
 import { debaterState, evidenceLeft, nameOf, teamEvidence } from "../debate/transcript.js";
 import {
-  ALL_DEBATERS,
   SIDE_LABEL,
+  TEAM_SIZE,
+  formatOf,
   opponentOf,
   type DebateRecord,
   type DebaterState,
@@ -14,7 +15,7 @@ import {
   type ProgressLog,
 } from "../types.js";
 
-// 演示模式（DEBATE_MOCK=1）：不调用 API、不联网，用占位数据走通完整的 8 人流程，方便调试界面与编排逻辑。
+// 演示模式（DEBATE_MOCK=1）：不调用 API、不联网，用占位数据走通完整流程（四辩制 8 人、公共论坛制 4 人），方便调试界面与编排逻辑。
 // 演示效果：正方一辩立论初稿故意把编号写进正文、并超出每个论点的证据上限，演示修改流程；
 // 之后的辩手优先引用本方尚未公开的证据（常常是队友检索到的），演示队友共享证据库，并且不超出本方的证据使用额度；
 // 封存前复核时反方三辩的一条证据「网页打不开」被删除，演示复核流程；
@@ -76,7 +77,8 @@ class MockDebater implements Debater {
       log?.(`${me.name} · 演示搜索「${q}」→ 3 条结果（演示模式不调用博查）`);
     }
     me.rejectedPages.push({ url: `https://example.com/${me.id}/login`, title: "需要登录的演示网页", reason: "网页正文为空（可能需要登录或由脚本渲染）" });
-    for (let n = 1; n <= Math.min(4, collectQuota(me.position)); n++) me.bank.push(makeEvidence(me, n));
+    const quota = collectQuota(me.position, TEAM_SIZE[formatOf(this.record)]);
+    for (let n = 1; n <= Math.min(4, quota); n++) me.bank.push(makeEvidence(me, n));
   }
 
   async recheck(log?: ProgressLog) {
@@ -92,9 +94,13 @@ class MockDebater implements Debater {
   async plan(spec: TurnSpec): Promise<PlanDraft> {
     await pause();
     const me = this.me;
-    const fresh = teamEvidence(this.record, me.side)
-      .filter((e) => e.disclosedAt === undefined)
-      .slice(0, evidenceLeft(this.record, me.side));
+    // 焦点总结不得引入新证据：只回指已公开的
+    const fresh =
+      spec.kind === "final_focus"
+        ? []
+        : teamEvidence(this.record, me.side)
+            .filter((e) => e.disclosedAt === undefined)
+            .slice(0, evidenceLeft(this.record, me.side));
     const point = (i: number, evidence: Evidence[]) => ({
       claim: `${SIDE_LABEL[me.side]}的第 ${i + 1} 个要点`,
       responds_to: spec.kind === "opening" ? "" : "对方立论",
@@ -103,7 +109,7 @@ class MockDebater implements Debater {
     });
     const opp = this.record.debaters.filter((d) => d.side !== me.side).flatMap((d) => d.bank);
     // 演示质疑：反方二辩驳论时质疑正方一辩最先公开的证据
-    const target = me.id === "con-2" ? opp.find((e) => e.disclosedAt !== undefined) : undefined;
+    const target = me.id === "con-2" && spec.kind === "rebuttal" ? opp.find((e) => e.disclosedAt !== undefined) : undefined;
     return {
       definitions: spec.kind === "opening" ? "[演示] 概念界定占位" : "",
       criterion: spec.kind === "opening" ? "[演示] 判断标准：哪一方能带来更大的长期净收益" : "",
@@ -138,7 +144,7 @@ class MockDebater implements Debater {
           conclusion: `综上所述，${label}立场更有说服力。谢谢！`,
         };
         if (!flawed) {
-          const { target } = openingTarget();
+          const { target } = openingTarget(formatOf(this.record));
           const count = () => spokenChars([draft.intro, ...args.flatMap((a) => [a.title, a.reasoning]), draft.conclusion].join(""));
           for (let i = 0; count() + 60 <= target; i++) args[i % 2].reasoning += REASONING[(i + 2) % REASONING.length];
         }
@@ -146,7 +152,9 @@ class MockDebater implements Debater {
       }
       case "rebuttal":
       case "summary":
-      case "closing": {
+      case "closing":
+      case "pf_summary":
+      case "final_focus": {
         const opp = opponentOpening(this.record, me);
         const target = opp?.arguments?.[0];
         const body = [
@@ -154,7 +162,11 @@ class MockDebater implements Debater {
           ...planned(0).map(cite),
         ];
         // 用占位推理把篇幅补到该环节要求的字数
-        const goal = { rebuttal: 700, summary: 470, closing: 800 }[spec.kind];
+        const pf = pfRange(spec.kind);
+        const goal =
+          formatOf(this.record) === "pf" && pf
+            ? Math.round(pf.target * 0.95)
+            : ({ rebuttal: 700, summary: 470, closing: 800 } as Record<string, number>)[spec.kind];
         for (let i = 0; spokenChars(body.join("")) + 50 < goal; i++) body.push(REASONING[i % REASONING.length]);
         body.push(`因此，${label}的立场更站得住脚。`);
         return { text: body.join(""), challenge: plan?.challenge ?? null };
@@ -195,13 +207,13 @@ export const mockAgents: AgentFactory = {
     };
   },
 
-  async judge(_record, persona): Promise<JudgeDraft> {
+  async judge(record, persona): Promise<JudgeDraft> {
     await pause();
     const tilt = persona.id.length % 2 === 0 ? 1 : -1;
     return {
       pro: { argument: 7 + tilt, evidence: 6, clash: 7, delivery: 7 },
       con: { argument: 7 - tilt, evidence: 7, clash: 6, delivery: 7 },
-      debaters: ALL_DEBATERS.map((d, i) => ({ id: d.id, score: 80 + ((i * 3 + persona.id.length) % 10), comment: `[演示] ${d.name}表现稳定` })),
+      debaters: record.debaters.map((d, i) => ({ id: d.id, score: 80 + ((i * 3 + persona.id.length) % 10), comment: `[演示] ${d.name}表现稳定` })),
       winner: tilt > 0 ? "pro" : "con",
       reason: `[演示] ${persona.name}从「${persona.focus}」角度认为${tilt > 0 ? "正方" : "反方"}略胜一筹。`,
       key_moments: ["[演示] 双方围绕论点一的交锋", "[演示] 证据质疑的核查结果"],

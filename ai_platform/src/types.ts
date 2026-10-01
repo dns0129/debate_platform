@@ -1,5 +1,7 @@
-// 领域模型：一场 8 人辩论从输入到裁决的全部数据。
-// 辩论的主体是 8 位辩手：每人检索出自己的证据，同队四人共享证据库；对方的证据只有在发言中引用后才会公开。
+// 领域模型：一场辩论从输入到裁决的全部数据。两种赛制：
+// - 四辩制：正反各四位辩手（立论 → 驳论 → 质询与小结 → 自由辩论 → 总结陈词）；
+// - 公共论坛制（Public Forum，PF）：正反各两位辩手（立论 → 交叉质询 → 反驳 → 交叉质询 → 总结 → 全场交叉质询 → 焦点总结）。
+// 辩论的主体是辩手：每人检索出自己的证据，同队辩手共享证据库；对方的证据只有在发言中引用后才会公开。
 // 前端完全由 DebateRecord 渲染，服务端每次更新都推送完整快照。
 
 export type Side = "pro" | "con";
@@ -7,14 +9,21 @@ export const SIDES: Side[] = ["pro", "con"];
 export const SIDE_LABEL: Record<Side, string> = { pro: "正方", con: "反方" };
 export const opponentOf = (side: Side): Side => (side === "pro" ? "con" : "pro");
 
-/** 一方四位辩手使用的模型与思考强度：整队统一，不能按辩手单独设置。 */
+/** 一方辩手使用的模型与思考强度：整队统一，不能按辩手单独设置。 */
 export interface TeamModel {
   model: string;
   /** 该模型 API 的原生档位，如 DeepSeek 的 high、千问的 xhigh */
   effort: string;
 }
 
+export type DebateFormat = "four" | "pf";
+export const FORMAT_LABEL: Record<DebateFormat, string> = { four: "四辩制", pf: "公共论坛制（PF）" };
+/** 每方辩手人数 */
+export const TEAM_SIZE: Record<DebateFormat, number> = { four: 4, pf: 2 };
+
 export interface DebateInput {
+  /** 旧记录没有，视为四辩制 */
+  format?: DebateFormat;
   topic: string;
   proStance: string;
   conStance: string;
@@ -49,6 +58,11 @@ export function debaterInfo(side: Side, position: number): DebaterInfo {
 }
 
 export const ALL_DEBATERS: DebaterInfo[] = SIDES.flatMap((side) => [1, 2, 3, 4].map((p) => debaterInfo(side, p)));
+
+/** 某种赛制的全部辩手：PF 每方两人（pro-1、pro-2、con-1、con-2）。 */
+export const debatersOf = (format: DebateFormat): DebaterInfo[] => ALL_DEBATERS.filter((d) => d.position <= TEAM_SIZE[format]);
+
+export const formatOf = (record: { input: DebateInput }): DebateFormat => record.input.format ?? "four";
 
 // ---------- 证据 ----------
 
@@ -114,7 +128,21 @@ export interface DebaterState extends DebaterInfo {
 
 // ---------- 发言 ----------
 
-export type Stage = "research" | "opening" | "rebuttal" | "cross" | "free" | "closing" | "judging" | "finished";
+export type Stage =
+  | "research"
+  | "opening"
+  | "rebuttal"
+  | "cross"
+  | "free"
+  | "closing"
+  // 公共论坛制
+  | "crossfire1"
+  | "crossfire2"
+  | "pf_summary"
+  | "grand_crossfire"
+  | "final_focus"
+  | "judging"
+  | "finished";
 export const STAGE_LABEL: Record<Stage, string> = {
   research: "赛前准备",
   opening: "立论",
@@ -122,11 +150,37 @@ export const STAGE_LABEL: Record<Stage, string> = {
   cross: "质询与小结",
   free: "自由辩论",
   closing: "总结陈词",
+  crossfire1: "一辩交叉质询",
+  crossfire2: "二辩交叉质询",
+  pf_summary: "总结",
+  grand_crossfire: "全场交叉质询",
+  final_focus: "焦点总结",
   judging: "评委评议",
   finished: "结束",
 };
 
-export type TurnKind = "opening" | "rebuttal" | "question" | "answer" | "summary" | "free" | "closing" | "check";
+/** 各赛制依次经过的环节（页面进度条与日志用）。 */
+export const FORMAT_STAGES: Record<DebateFormat, Stage[]> = {
+  four: ["research", "opening", "rebuttal", "cross", "free", "closing", "judging"],
+  pf: ["research", "opening", "crossfire1", "rebuttal", "crossfire2", "pf_summary", "grand_crossfire", "final_focus", "judging"],
+};
+
+/** 环节名称：PF 的 rebuttal 叫「反驳」。 */
+export const stageLabel = (format: DebateFormat, stage: Stage) =>
+  format === "pf" && stage === "rebuttal" ? "反驳" : STAGE_LABEL[stage];
+
+export type TurnKind =
+  | "opening"
+  | "rebuttal"
+  | "question"
+  | "answer"
+  | "summary"
+  | "free"
+  | "closing"
+  // 公共论坛制：总结（3 分钟，收拢论点、开始权衡）与焦点总结（2 分钟，不得有新论点、新证据）
+  | "pf_summary"
+  | "final_focus"
+  | "check";
 export const TURN_LABEL: Record<TurnKind, string> = {
   opening: "立论",
   rebuttal: "驳论",
@@ -135,8 +189,16 @@ export const TURN_LABEL: Record<TurnKind, string> = {
   summary: "质询小结",
   free: "自由辩论",
   closing: "总结陈词",
+  pf_summary: "总结",
+  final_focus: "焦点总结",
   check: "证据核查",
 };
+
+/** 发言类型名称：PF 的 rebuttal 叫「反驳」，质询叫「交叉质询」。 */
+export function turnKindLabel(format: DebateFormat, kind: TurnKind): string {
+  if (format !== "pf") return TURN_LABEL[kind];
+  return { rebuttal: "反驳", question: "交叉质询", answer: "答交叉质询" }[kind as string] ?? TURN_LABEL[kind];
+}
 
 /** 立论的论点：编号 PA1 / CA1 由系统分配，其他辩手用〔PA1〕指代。 */
 export interface Argument {
@@ -193,7 +255,7 @@ export interface Challenge {
 export interface Violation {
   turn: number;
   speaker: string;
-  kind: "unknown_evidence" | "unknown_argument" | "invalid_evidence" | "over_limit";
+  kind: "unknown_evidence" | "unknown_argument" | "invalid_evidence" | "over_limit" | "late_evidence";
   ref: string;
   detail: string;
   /** true = 辩手收到反馈后自行修正；false = 仍然存在，已被系统剔除并计入裁判评分依据 */
@@ -271,6 +333,10 @@ export interface TokenUsage {
 export interface DebateRules {
   crossQuestionsPerTarget: number;
   freeDebateTurns: number;
+  /** PF：掷硬币决定的先发言方 */
+  first?: Side;
+  /** PF：每场交叉质询中每方提问几次 */
+  crossfireQuestions?: number;
 }
 
 export interface DebateRecord {

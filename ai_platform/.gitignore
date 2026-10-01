@@ -2,3 +2,6 @@ node_modules/
 .env
 data/debates/*.json
 data/debates/*.lock
+__pycache__/
+# pf-debate skill 运行时生成的辩论目录
+/debate-*/

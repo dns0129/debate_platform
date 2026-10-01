@@ -41,7 +41,9 @@ async function init() {
   }
   setupTeamModels();
   updateJudgeHint();
+  updateFormatHint();
   $("#debate-form select[name=judgeCount]").addEventListener("change", updateJudgeHint);
+  $("#debate-form select[name=format]").addEventListener("change", updateFormatHint);
   $("#debate-form").addEventListener("submit", onSubmit);
   main.addEventListener("click", onRefClick);
   window.addEventListener("hashchange", route);
@@ -110,6 +112,18 @@ function saveTeamModels() {
   }
 }
 
+const FORMAT_HINT = {
+  four: "正反各四位辩手：立论 → 驳论 → 质询与小结 → 自由辩论 → 总结陈词。",
+  pf: () =>
+    `NSDA 公共论坛赛制，正反各两位辩手，掷硬币决定先发言方：立论（4 分钟）→ 一辩交叉质询 → 反驳（4 分钟）→ 二辩交叉质询 → 总结（3 分钟）→ 全场交叉质询 → 焦点总结（2 分钟）。每轮交叉质询每方各问 ${appConfig.pfCrossfireQuestions ?? 2} 次，问与答都由辩手独立作答。`,
+};
+
+function updateFormatHint() {
+  const format = $("#debate-form select[name=format]").value;
+  const hint = FORMAT_HINT[format];
+  $("#format-hint").textContent = typeof hint === "function" ? hint() : hint;
+}
+
 function updateJudgeHint() {
   const n = Number($("#debate-form select[name=judgeCount]").value);
   $("#judge-hint").textContent = appConfig.judges.slice(0, n).map((j) => j.name).join("、");
@@ -133,6 +147,7 @@ async function onSubmit(event) {
   try {
     const fields = Object.fromEntries(new FormData(form));
     const body = {
+      format: fields.format,
       topic: fields.topic,
       proStance: fields.proStance,
       conStance: fields.conStance,
@@ -166,7 +181,7 @@ async function loadHistory() {
         .map(
           (d) => `<li><a href="${d.version === 2 ? `live.html#${esc(d.id)}` : `#/debate/${esc(d.id)}`}">
             <span class="h-topic">${esc(d.topic)}</span>
-            <span class="h-meta">${new Date(d.createdAt).toLocaleString("zh-CN", { hour12: false })} · ${statusText(d)}${d.mock ? " · 演示" : ""}</span>
+            <span class="h-meta">${new Date(d.createdAt).toLocaleString("zh-CN", { hour12: false })} · ${d.format === "pf" ? "PF · " : ""}${statusText(d)}${d.mock ? " · 演示" : ""}</span>
           </a></li>`,
         )
         .join("")

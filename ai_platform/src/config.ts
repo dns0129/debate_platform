@@ -91,7 +91,7 @@ export const config = {
   searchesPerDebater: int(process.env.SEARCHES_PER_DEBATER, 3),
 
   // 证据规则：只有赛前准备可以检索，立论开始前证据库封存，之后任何辩手都不能再收集新证据。
-  // 每方证据库最多收集多少条（默认 20，最多 30），按辩位平均分给四位辩手；每方全场最多使用（在发言中首次引用）多少条
+  // 每方证据库最多收集多少条（默认 20，最多 30），按辩位平均分给本方辩手（四辩制每人 1/4，公共论坛制每人 1/2）；每方全场最多使用（在发言中首次引用）多少条
   evidencePerSide: Math.min(int(process.env.EVIDENCE_PER_SIDE, 20), 30),
   maxEvidenceUsedPerSide: int(process.env.MAX_EVIDENCE_USED_PER_SIDE, 9),
   // 网页核验：打开网页并核对摘录原文
@@ -101,6 +101,8 @@ export const config = {
   // 赛制
   crossQuestionsPerTarget: int(process.env.CROSS_QUESTIONS_PER_TARGET, 2),
   freeDebateTurns: int(process.env.FREE_DEBATE_TURNS, 8),
+  // 公共论坛制：每场交叉质询（一辩、二辩、全场）中每方各提几问，每问一答
+  pfCrossfireQuestions: int(process.env.PF_CROSSFIRE_QUESTIONS, 2),
   maxChallengesPerSide: int(process.env.MAX_CHALLENGES_PER_SIDE, 3),
 
   // 论证质量约束：每个论点最多引用几条证据；一段发言里「引用句」最多占多少

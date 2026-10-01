@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ALL_DEBATERS, type DebateInput, type DebateRecord, type LogEntry } from "../types.js";
+import { debatersOf, type DebateFormat, type DebateInput, type DebateRecord, type LogEntry } from "../types.js";
 
 export class LockError extends Error {}
 
@@ -22,8 +22,9 @@ export interface DebateSummary {
   status: DebateRecord["status"];
   winner?: string;
   mock: boolean;
-  /** 2 = 八位辩手版；旧版（每方一个辩手、共享证据池）的记录没有此字段 */
+  /** 2 = 多辩手版（四辩制或公共论坛制）；旧版（每方一个辩手、共享证据池）的记录没有此字段 */
   version?: number;
+  format?: DebateFormat;
 }
 
 /** 旧版记录只读展示，这里只用到各版本共有的字段。 */
@@ -59,7 +60,7 @@ export class DebateStore {
       status: "running",
       stage: "research",
       input,
-      debaters: ALL_DEBATERS.map((d) => ({ ...d, bank: [], searchCalls: [], rejectedPages: [], plans: [] })),
+      debaters: debatersOf(input.format ?? "four").map((d) => ({ ...d, bank: [], searchCalls: [], rejectedPages: [], plans: [] })),
       turns: [],
       challenges: [],
       violations: [],
@@ -147,6 +148,7 @@ export class DebateStore {
         winner: r.verdict?.winner,
         mock: r.mock,
         version: r.version,
+        format: r.input.format ?? "four",
       }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }

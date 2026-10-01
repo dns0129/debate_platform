@@ -3,6 +3,7 @@ import type { PlanDraft } from "../agents/schemas.js";
 import { config } from "../config.js";
 import {
   SIDE_LABEL,
+  formatOf,
   opponentOf,
   type Argument,
   type DebateRecord,
@@ -102,6 +103,17 @@ export function checkTurn(
     return ids.filter((id) => !over.has(id));
   };
 
+  // 公共论坛制的焦点总结不得首次引用新证据：只能回指已经公开的证据
+  const noLateEvidence = (ids: string[]) =>
+    spec.kind !== "final_focus"
+      ? ids
+      : ids.filter((id) => {
+          if (visible.get(id)?.side !== me.side || disclosedBefore.has(id)) return true;
+          addIssue("late_evidence", id, `焦点总结首次引用了本方证据「${id}」：焦点总结不得引入新证据，只能回指已经公开的证据，请删去这处引用或改用已公开的证据`);
+          return false;
+        });
+
+  const format = formatOf(record);
   const citeCtx = { evidence: visible, disclosed: disclosedBefore };
   const revisions = new Set<string>();
 
@@ -133,7 +145,7 @@ export function checkTurn(
       }
     }
     text = parts.map((p) => (p.title ? `${p.title}\n${p.text}` : p.text)).join("\n\n");
-    const budget = openingBudget(d.arguments.length);
+    const budget = openingBudget(d.arguments.length, format);
     const lengthRevision = openingLengthRevision(
       spokenChars(text),
       parts.map((p) => ({
@@ -141,16 +153,17 @@ export function checkTurn(
         chars: spokenChars(p.title ? `${p.title}\n${p.text}` : p.text),
         budget: p.argumentId ? budget.perArgument : p.label === "开场" ? budget.intro : budget.conclusion,
       })),
+      format,
     );
     if (lengthRevision) revisions.add(lengthRevision);
   } else {
     text = normalizeMarkers(written.text);
-    const lengthRevision = speechLengthRevision(spec.kind, spokenChars(text));
+    const lengthRevision = speechLengthRevision(spec.kind, spokenChars(text), format);
     if (lengthRevision) revisions.add(lengthRevision);
   }
 
   const refs = extractRefs(text);
-  const evidenceIds = withinLimit(keepEvidence(refs.evidence));
+  const evidenceIds = withinLimit(noLateEvidence(keepEvidence(refs.evidence)));
   keepArguments(refs.arguments);
 
   for (const r of citationRevisions(text, citeCtx)) revisions.add(r);
@@ -205,8 +218,11 @@ export function checkPlan(record: DebateRecord, me: DebaterState, spec: TurnSpec
       if (e.disclosedAt === undefined) fresh.add(e.id);
     }
   });
+  if (spec.kind === "final_focus" && fresh.size) {
+    out.push(`焦点总结不得引入新证据，构思里却要首次使用 ${[...fresh].join("、")}：只能回指已经公开的证据，其余用推理和权衡`);
+  }
   const left = evidenceLeft(record, me.side);
-  if (fresh.size > left) {
+  if (fresh.size > left && spec.kind !== "final_focus") {
     out.push(
       left === 0
         ? `本方 ${config.maxEvidenceUsedPerSide} 条证据的额度已经用完，构思里却要首次使用 ${fresh.size} 条（${[...fresh].join("、")}）：只能回指已公开的证据，其余步骤用推理支撑`

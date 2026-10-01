@@ -24,18 +24,6 @@
         "src/server.ts"
       ],
       "port": 3101
-    },
-    {
-      "name": "pf-debate-preview",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": [
-        "-m",
-        "http.server",
-        "3200",
-        "--directory",
-        "/Users/yuanzichen/ai辩论模拟平台/skills-dev"
-      ],
-      "port": 3200
     }
   ]
 }

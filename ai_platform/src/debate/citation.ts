@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import type { Evidence, SpeechTiming, TurnKind } from "../types.js";
+import type { DebateFormat, Evidence, SpeechTiming, TurnKind } from "../types.js";
 
 // 发言的引用写法、论证密度与时长：
 // - 首次公开一条证据，要像正式辩论那样先说出处、再讲具体内容；已经公开过的证据只需简短回指，不要重复展开；
@@ -45,22 +45,42 @@ export function formatDuration(sec: number): string {
   return m ? `${m} 分 ${String(s).padStart(2, "0")} 秒` : `${s} 秒`;
 }
 
+// 公共论坛制（NSDA Public Forum）各段发言的规定时长（分钟）。和真实比赛一样有 10 秒宽限：超过宽限就算超时；
+// 短于规定时长的 75% 说明没把时间用足，要求展开
+export const PF_MINUTES: Partial<Record<TurnKind, number>> = { opening: 4, rebuttal: 4, pf_summary: 3, final_focus: 2 };
+export const PF_GRACE_SEC = 10;
+const PF_MIN_SHARE = 0.75;
+
+const charsFor = (minutes: number) => Math.round(config.speechCharsPerMinute * minutes);
+
+/** PF 一段发言的字数范围：规定时长 × 正常语速，上限含 10 秒宽限。 */
+export function pfRange(kind: TurnKind) {
+  const minutes = PF_MINUTES[kind];
+  if (!minutes) return null;
+  const target = charsFor(minutes);
+  return { minutes, target, min: Math.round(target * PF_MIN_SHARE), max: charsFor(minutes + PF_GRACE_SEC / 60) };
+}
+
 /** 立论目标字数：目标时长 × 正常语速；落在可接受时长范围内都不要求修改。 */
-export function openingTarget() {
-  const chars = (minutes: number) => Math.round(config.speechCharsPerMinute * minutes);
-  const target = chars(config.openingMinutes);
+export function openingTarget(format: DebateFormat = "four") {
+  if (format === "pf") {
+    const { target, min, max } = pfRange("opening")!;
+    return { target, min, max };
+  }
+  const target = charsFor(config.openingMinutes);
   // 范围配置得不含目标时长时，以目标为界
-  return { target, min: Math.min(chars(config.openingMinMinutes), target), max: Math.max(chars(config.openingMaxMinutes), target) };
+  return { target, min: Math.min(charsFor(config.openingMinMinutes), target), max: Math.max(charsFor(config.openingMaxMinutes), target) };
 }
 
 /** 立论时长要求的文字说明，如「约 8 分钟（6-9 分钟均可）」。 */
-export function openingDurationLine(): string {
+export function openingDurationLine(format: DebateFormat = "four"): string {
+  if (format === "pf") return `4 分钟（另有 ${PF_GRACE_SEC} 秒宽限，不少于 3 分钟）`;
   const { min, max } = openingTarget();
   const minutes = (chars: number) => Math.round((chars / config.speechCharsPerMinute) * 10) / 10;
   return `约 ${config.openingMinutes} 分钟（${minutes(min)}-${minutes(max)} 分钟均可）`;
 }
 
-// 立论以外发言的篇幅要求（字），与辩手提示词中的要求一致。明显超出时要求删减；
+// 四辩制立论以外发言的篇幅要求（字），与辩手提示词中的要求一致。明显超出时要求删减；
 // 驳论、小结和总结陈词明显不足时要求展开（质询、答问和自由辩论短一些无妨）
 const SPEECH_LENGTH: Partial<Record<TurnKind, { min: number; max: number; enforceMin: boolean }>> = {
   rebuttal: { min: 600, max: 800, enforceMin: true },
@@ -71,7 +91,27 @@ const SPEECH_LENGTH: Partial<Record<TurnKind, { min: number; max: number; enforc
   free: { min: 80, max: 200, enforceMin: false },
 };
 
-export function speechLengthRevision(kind: TurnKind, chars: number): string | null {
+// PF 交叉质询的一问一答要短：问题一句话，回答一到三句
+const PF_SHORT: Partial<Record<TurnKind, { min: number; max: number }>> = {
+  question: { min: 20, max: 100 },
+  answer: { min: 20, max: 160 },
+};
+
+export function speechLengthRevision(kind: TurnKind, chars: number, format: DebateFormat = "four"): string | null {
+  if (format === "pf") {
+    const range = pfRange(kind);
+    if (range) {
+      const over = timing(chars).durationSec - range.minutes * 60;
+      if (chars > range.max) {
+        return `全文约 ${chars} 字，按正常语速约 ${formatDuration(timing(chars).durationSec)}，超出规定的 ${range.minutes} 分钟 ${over} 秒（宽限只有 ${PF_GRACE_SEC} 秒，超时部分评委不会听）：请删减到 ${range.target} 字左右，先删重复讲述的证据和铺垫，保留推理主干`;
+      }
+      if (chars < range.min) return `全文约 ${chars} 字，只用了规定 ${range.minutes} 分钟的不到四分之三，请把推理展开到 ${range.target} 字左右（不是堆更多引用）`;
+      return null;
+    }
+    const short = PF_SHORT[kind];
+    if (short && chars > short.max * 1.2) return `这一句约 ${chars} 字，交叉质询要短：请压缩到 ${short.max} 字以内，一次只问（答）一个点`;
+    return null;
+  }
   const range = SPEECH_LENGTH[kind];
   if (!range) return null;
   const { min, max, enforceMin } = range;
@@ -84,16 +124,16 @@ export function speechLengthRevision(kind: TurnKind, chars: number): string | nu
  * 立论各部分的字数预算：开场约 20%，结语约 8%，其余平均分给各论点。
  * 模型实际写出的篇幅通常比预算长一成左右，所以预算按目标字数的 92% 分配。
  */
-export function openingBudget(argumentCount: number) {
-  const target = openingTarget().target * 0.92;
+export function openingBudget(argumentCount: number, format: DebateFormat = "four") {
+  const target = openingTarget(format).target * 0.92;
   const round10 = (n: number) => Math.round(n / 10) * 10;
   const intro = round10(target * 0.2);
   const conclusion = round10(target * 0.08);
   return { intro, conclusion, perArgument: round10((target - intro - conclusion) / Math.max(1, argumentCount)) };
 }
 
-export function openingBudgetLine(argumentCount: number): string {
-  const b = openingBudget(argumentCount);
+export function openingBudgetLine(argumentCount: number, format: DebateFormat = "four"): string {
+  const b = openingBudget(argumentCount, format);
   return `【字数预算】开场约 ${b.intro} 字；每个论点约 ${b.perArgument} 字（共 ${argumentCount} 个）；结语约 ${b.conclusion} 字。写每一部分时都按预算控制篇幅。`;
 }
 
@@ -103,8 +143,8 @@ export interface SectionLength {
   budget: number;
 }
 
-export function openingLengthRevision(chars: number, sections: SectionLength[] = []): string | null {
-  const { target, min, max } = openingTarget();
+export function openingLengthRevision(chars: number, sections: SectionLength[] = [], format: DebateFormat = "four"): string | null {
+  const { target, min, max } = openingTarget(format);
   if (chars >= min && chars <= max) return null;
   const long = chars > max;
   // 模型删减时往往只改几个字，所以按略低于目标的字数要求删减，并要求整句删除
@@ -117,7 +157,7 @@ export function openingLengthRevision(chars: number, sections: SectionLength[] =
     .sort((a, b) => Math.abs(b.chars - b.budget) - Math.abs(a.chars - a.budget))
     .map((s) => `${s.label} ${s.chars} 字（预算约 ${s.budget} 字）`);
   const where = off.length ? `。${long ? "超出" : "不足"}预算的部分：${off.join("、")}，请${long ? "压缩" : "扩充"}这些部分` : "";
-  return `立论全文约 ${chars} 字，按每分钟 ${config.speechCharsPerMinute} 字的正常语速约 ${formatDuration(timing(chars).durationSec)}；要求${openingDurationLine()}，即 ${min}-${max} 字，最好在 ${target} 字左右。当前${fix}${where}`;
+  return `立论全文约 ${chars} 字，按每分钟 ${config.speechCharsPerMinute} 字的正常语速约 ${formatDuration(timing(chars).durationSec)}；要求${openingDurationLine(format)}，即 ${min}-${max} 字，最好在 ${target} 字左右。当前${fix}${where}`;
 }
 
 // ---------- 出处 ----------

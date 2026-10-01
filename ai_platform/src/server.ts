@@ -8,7 +8,7 @@ import { DebateStore, LockError } from "./debate/store.js";
 import { DEMO_FILES, DemoFileMissingError, demoPath, loadDemoScript } from "./demo/placeholder.js";
 import { MODELS, PROVIDERS, defaultTeam, describeModel, findModel, isConfigured, resolveEffort, teamModel } from "./llm/models.js";
 import { mockAgents } from "./mock/mockAgents.js";
-import { SIDES, SIDE_LABEL, type DebateInput, type DebateRecord, type Side, type TeamModel } from "./types.js";
+import { FORMAT_LABEL, SIDES, SIDE_LABEL, TEAM_SIZE, type DebateFormat, type DebateInput, type DebateRecord, type Side, type TeamModel } from "./types.js";
 
 // Node 21 等旧版本自带的 fetch（undici 5.x）有个已知缺陷：网页读取中途被取消、超时或连接异常时，
 // 内部仍会往已关闭的流里写数据，抛出「Controller is already closed」。这个错误发生在 Node 内部，
@@ -57,6 +57,8 @@ app.get("/api/config", (_req, res) => {
     evidencePerSide: config.evidencePerSide,
     maxEvidenceUsedPerSide: config.maxEvidenceUsedPerSide,
     judges: JUDGE_PERSONAS.map(({ id, name, focus }) => ({ id, name, focus })),
+    formats: (Object.keys(FORMAT_LABEL) as DebateFormat[]).map((id) => ({ id, label: FORMAT_LABEL[id], teamSize: TEAM_SIZE[id] })),
+    pfCrossfireQuestions: config.pfCrossfireQuestions,
   });
 });
 
@@ -95,6 +97,8 @@ function parseInput(body: unknown): DebateInput | string {
     return value;
   };
   try {
+    const format = (b.format ?? "four") as DebateFormat;
+    if (!(format in FORMAT_LABEL)) throw new Error(`赛制只能是 ${Object.keys(FORMAT_LABEL).join(" / ")}`);
     const judgeCount = Number(b.judgeCount ?? 3);
     if (!Number.isInteger(judgeCount) || judgeCount < 1 || judgeCount > JUDGE_PERSONAS.length) {
       throw new Error(`裁判人数需为 1-${JUDGE_PERSONAS.length} 的整数`);
@@ -104,6 +108,7 @@ function parseInput(body: unknown): DebateInput | string {
     const missing = missingKey([teams.pro.model, teams.con.model, config.judgeModel]);
     if (missing) throw new Error(missing);
     return {
+      format,
       topic: text("topic", "论题"),
       proStance: text("proStance", "正方观点"),
       conStance: text("conStance", "反方观点"),
